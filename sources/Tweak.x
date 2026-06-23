@@ -49,7 +49,7 @@
                              completion:nil];
             }
         } @catch (NSException *exception) {
-            NSLog(@"[Gonerino] Exception in removeOffendingCells: %@", exception);
+            NSLog(@"[YGonerino] Exception in removeOffendingCells: %@", exception);
         }
     });
 }
@@ -63,13 +63,21 @@
 
     static void *blockActionKey = &blockActionKey;
     if (objc_getAssociatedObject(self, blockActionKey)) {
+        NSLog(@"[YGonerino] addAction: skipped, block actions already added for this sheet instance (self=%p)", self);
         return;
     }
 
     UIView *sourceView = [self valueForKey:@"sourceView"];
     id node            = [sourceView valueForKey:@"asyncdisplaykit_node"];
 
+    NSLog(@"[YGonerino] addAction: called with action title=\"%@\" | sourceView=%@ | node class=%@ | node "
+          @"debugDescription=%@",
+          action ? [action valueForKey:@"_title"] : @"(nil)", sourceView, node ? [node class] : @"(nil)",
+          node ? [node debugDescription] : @"(nil)");
+
     if (!node || ![node debugDescription] || ![[node debugDescription] containsString:@"YTVideoWithContextNode"]) {
+        NSLog(@"[YGonerino] addAction: bailing out, node missing or debugDescription does not contain "
+              @"\"YTVideoWithContextNode\"");
         return;
     }
 
@@ -78,9 +86,14 @@
         currentActionsCount = [[self actions] count];
     }
 
+    NSLog(@"[YGonerino] addAction: currentActionsCount=%ld", (long)currentActionsCount);
+
     if (currentActionsCount < 3) {
+        NSLog(@"[YGonerino] addAction: bailing out, not enough actions yet (%ld < 3)", (long)currentActionsCount);
         return;
     }
+
+    NSLog(@"[YGonerino] addAction: conditions met, adding Block channel / Block video actions to sheet %p", self);
 
     __weak typeof(self) weakSelf = self;
     CGSize iconSize              = CGSizeMake(24, 24);
@@ -97,16 +110,26 @@
                   style:0
                 handler:^(YTActionSheetAction *action) {
                     __strong typeof(self) strongSelf = weakSelf;
+                    NSLog(@"[YGonerino] Block channel: handler fired (strongSelf=%p)", strongSelf);
                     @try {
                         UIView *sourceView = [strongSelf valueForKey:@"sourceView"];
                         id node            = [sourceView valueForKey:@"asyncdisplaykit_node"];
 
+                        NSLog(@"[YGonerino] Block channel: sourceView=%@ | node class=%@", sourceView,
+                              node ? [node class] : @"(nil)");
+
                         [Util extractVideoInfoFromContextNode:node
                                                     completion:^(NSString *videoId, NSString *videoTitle,
                                                                  NSString *ownerName) {
+                                                        NSLog(@"[YGonerino] Block channel: extraction completion "
+                                                              @"fired with ownerName=%@",
+                                                              ownerName ?: @"(nil)");
                                                         if (ownerName.length) {
                                                             [[ChannelManager sharedInstance]
                                                                 addBlockedChannel:ownerName];
+                                                            NSLog(@"[YGonerino] Block channel: added \"%@\" to "
+                                                                  @"ChannelManager",
+                                                                  ownerName);
                                                             UIViewController *viewController =
                                                                 (UIViewController *)strongSelf;
                                                             [[%c(YTToastResponderEvent)
@@ -118,12 +141,12 @@
                                                                 [strongSelf dismiss];
                                                             }
                                                         } else {
-                                                            NSLog(@"[Gonerino] Block channel failed: no channel name "
+                                                            NSLog(@"[YGonerino] Block channel failed: no channel name "
                                                                   @"extracted");
                                                         }
                                                     }];
                     } @catch (NSException *e) {
-                        NSLog(@"[Gonerino] Exception in block action: %@", e);
+                        NSLog(@"[YGonerino] Exception in block action: %@", e);
                     }
                 }];
 
@@ -133,17 +156,27 @@
                   style:0
                 handler:^(YTActionSheetAction *action) {
                     __strong typeof(self) strongSelf = weakSelf;
+                    NSLog(@"[YGonerino] Block video: handler fired (strongSelf=%p)", strongSelf);
                     @try {
                         UIView *sourceView = [strongSelf valueForKey:@"sourceView"];
                         id node            = [sourceView valueForKey:@"asyncdisplaykit_node"];
 
+                        NSLog(@"[YGonerino] Block video: sourceView=%@ | node class=%@", sourceView,
+                              node ? [node class] : @"(nil)");
+
                         [Util extractVideoInfoFromContextNode:node
                                                     completion:^(NSString *videoId, NSString *videoTitle,
                                                                  NSString *ownerName) {
+                                                        NSLog(@"[YGonerino] Block video: extraction completion "
+                                                              @"fired with videoId=%@ title=%@",
+                                                              videoId ?: @"(nil)", videoTitle ?: @"(nil)");
                                                         if (videoId.length) {
                                                             [[VideoManager sharedInstance] addBlockedVideo:videoId
                                                                                                      title:videoTitle
                                                                                                    channel:ownerName];
+                                                            NSLog(@"[YGonerino] Block video: added \"%@\" (%@) to "
+                                                                  @"VideoManager",
+                                                                  videoTitle ?: @"(no title)", videoId);
                                                             UIViewController *viewController =
                                                                 (UIViewController *)strongSelf;
                                                             [[%c(YTToastResponderEvent)
@@ -155,12 +188,12 @@
                                                                 [strongSelf dismiss];
                                                             }
                                                         } else {
-                                                            NSLog(@"[Gonerino] Block video failed: no video id "
+                                                            NSLog(@"[YGonerino] Block video failed: no video id "
                                                                   @"extracted");
                                                         }
                                                     }];
                     } @catch (NSException *e) {
-                        NSLog(@"[Gonerino] Exception in block action: %@", e);
+                        NSLog(@"[YGonerino] Exception in block action: %@", e);
                     }
                 }];
 

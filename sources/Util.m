@@ -133,7 +133,7 @@
             }
         }
     } @catch (NSException *exception) {
-        NSLog(@"[Gonerino] Exception in extractVideoInfoFromPlaybackNodeSync: %@", exception);
+        NSLog(@"[YGonerino] Exception in extractVideoInfoFromPlaybackNodeSync: %@", exception);
     }
 
     return @{};
@@ -245,7 +245,12 @@
 + (void)extractVideoInfoFromContextNode:(id)contextNode
                               completion:(void (^)(NSString *videoId, NSString *videoTitle,
                                                    NSString *ownerName))completion {
+    NSLog(@"[YGonerino] extractVideoInfoFromContextNode: called with contextNode class=%@",
+          contextNode ? [contextNode class] : @"(nil)");
+
     if (!completion || !contextNode) {
+        NSLog(@"[YGonerino] extractVideoInfoFromContextNode: bailing out, completion=%@ contextNode=%@",
+              completion ? @"present" : @"(nil)", contextNode ? @"present" : @"(nil)");
         return;
     }
 
@@ -255,11 +260,15 @@
     NSString *strategy   = nil;
 
     id playbackNode = [self findPlaybackNodeInTree:contextNode];
+    NSLog(@"[YGonerino] extractVideoInfoFromContextNode: navigationEndpoint strategy, playbackNode=%@",
+          playbackNode ? [playbackNode class] : @"(not found)");
     if (playbackNode) {
         NSDictionary *playbackInfo = [self extractVideoInfoFromPlaybackNodeSync:playbackNode];
         videoId                    = playbackInfo[@"videoId"];
         videoTitle                 = playbackInfo[@"videoTitle"];
         ownerName                  = playbackInfo[@"ownerName"];
+        NSLog(@"[YGonerino] extractVideoInfoFromContextNode: navigationEndpoint result -> id=%@ title=%@ owner=%@",
+              videoId ?: @"(none)", videoTitle ?: @"(none)", ownerName ?: @"(none)");
         if (videoId.length || videoTitle.length || ownerName.length) {
             strategy = @"navigationEndpoint";
         }
@@ -269,6 +278,8 @@
         NSMutableString *channelFromText = [NSMutableString string];
         NSMutableString *titleFromText   = [NSMutableString string];
         [self collectTextMetadataFromNode:contextNode channelName:channelFromText title:titleFromText];
+        NSLog(@"[YGonerino] extractVideoInfoFromContextNode: textNode strategy result -> channel=%@ title=%@",
+              channelFromText.length ? channelFromText : @"(none)", titleFromText.length ? titleFromText : @"(none)");
 
         if (!ownerName.length && channelFromText.length) {
             ownerName = channelFromText.copy;
@@ -282,6 +293,8 @@
 
     if (!ownerName.length) {
         NSString *channelFromTree = [self findChannelNameInTree:contextNode];
+        NSLog(@"[YGonerino] extractVideoInfoFromContextNode: channelSelector strategy result -> channel=%@",
+              channelFromTree.length ? channelFromTree : @"(none)");
         if (channelFromTree.length) {
             ownerName = channelFromTree;
             strategy  = strategy ?: @"channelSelector";
@@ -290,6 +303,8 @@
 
     if (!ownerName.length) {
         NSString *channelFromVideo = [self channelNameFromVideoContextNode:contextNode];
+        NSLog(@"[YGonerino] extractVideoInfoFromContextNode: videoContext strategy result -> channel=%@",
+              channelFromVideo.length ? channelFromVideo : @"(none)");
         if (channelFromVideo.length) {
             ownerName = channelFromVideo;
             strategy  = strategy ?: @"videoContext";
@@ -297,11 +312,12 @@
     }
 
     if (videoId.length || videoTitle.length || ownerName.length) {
-        NSLog(@"[Gonerino] Extracted video info via %@ (id=%@, title=%@, channel=%@)", strategy ?: @"unknown",
+        NSLog(@"[YGonerino] Extracted video info via %@ (id=%@, title=%@, channel=%@)", strategy ?: @"unknown",
               videoId ?: @"(none)", videoTitle ?: @"(none)", ownerName ?: @"(none)");
         completion(videoId, videoTitle, ownerName);
     } else {
-        NSLog(@"[Gonerino] Failed to extract video info from context node: %@", [contextNode class]);
+        NSLog(@"[YGonerino] Failed to extract video info from context node: %@ | full debugDescription: %@",
+              [contextNode class], [contextNode debugDescription]);
     }
 }
 
@@ -312,7 +328,7 @@
     }
 
     if (![node isKindOfClass:NSClassFromString(@"YTInlinePlaybackPlayerNode")]) {
-        NSLog(@"[Gonerino] Error: extractVideoInfoFromNode received incorrect node type: %@",
+        NSLog(@"[YGonerino] Error: extractVideoInfoFromNode received incorrect node type: %@",
               NSStringFromClass([node class]));
         return;
     }
@@ -335,7 +351,7 @@
         NSString *accessibilityLabel = [node accessibilityLabel];
         if (accessibilityLabel) {
             if ([[WordManager sharedInstance] isWordBlocked:accessibilityLabel]) {
-                NSLog(@"[Gonerino] Blocking video because of blocked word: %@", accessibilityLabel);
+                NSLog(@"[YGonerino] Blocking video because of blocked word: %@", accessibilityLabel);
                 return YES;
             }
         }
@@ -348,18 +364,18 @@
 
         if ([[NSUserDefaults standardUserDefaults] boolForKey:@"GonerinoPeopleWatched"] &&
             [text isEqualToString:@"People also watched this video"]) {
-            NSLog(@"[Gonerino] Blocking 'People also watched' section");
+            NSLog(@"[YGonerino] Blocking 'People also watched' section");
             return YES;
         }
 
         if ([[NSUserDefaults standardUserDefaults] boolForKey:@"GonerinoMightLike"] &&
             [text isEqualToString:@"You might also like this"]) {
-            NSLog(@"[Gonerino] Blocking 'You might also like' section");
+            NSLog(@"[YGonerino] Blocking 'You might also like' section");
             return YES;
         }
 
         if ([[WordManager sharedInstance] isWordBlocked:text]) {
-            NSLog(@"[Gonerino] Blocking content with blocked word: %@", text);
+            NSLog(@"[YGonerino] Blocking content with blocked word: %@", text);
             return YES;
         }
 
@@ -368,7 +384,7 @@
             if (components.count >= 1) {
                 NSString *potentialChannelName = components[0];
                 if ([[ChannelManager sharedInstance] isChannelBlocked:potentialChannelName]) {
-                    NSLog(@"[Gonerino] Blocking content from blocked channel: %@", potentialChannelName);
+                    NSLog(@"[YGonerino] Blocking content from blocked channel: %@", potentialChannelName);
                     return YES;
                 }
             }
@@ -378,7 +394,7 @@
     if ([node respondsToSelector:@selector(channelName)]) {
         NSString *nodeChannelName = [node channelName];
         if ([[ChannelManager sharedInstance] isChannelBlocked:nodeChannelName]) {
-            NSLog(@"[Gonerino] Blocking content from blocked channel: %@", nodeChannelName);
+            NSLog(@"[YGonerino] Blocking content from blocked channel: %@", nodeChannelName);
             return YES;
         }
     }
@@ -386,7 +402,7 @@
     if ([node respondsToSelector:@selector(ownerName)]) {
         NSString *nodeOwnerName = [node ownerName];
         if ([[ChannelManager sharedInstance] isChannelBlocked:nodeOwnerName]) {
-            NSLog(@"[Gonerino] Blocking content from blocked channel: %@", nodeOwnerName);
+            NSLog(@"[YGonerino] Blocking content from blocked channel: %@", nodeOwnerName);
             return YES;
         }
     }
@@ -398,19 +414,19 @@
         NSString *ownerName  = info[@"ownerName"];
 
         if (videoId.length && [[VideoManager sharedInstance] isVideoBlocked:videoId]) {
-            NSLog(@"[Gonerino] Blocking video with id: %@", videoId);
+            NSLog(@"[YGonerino] Blocking video with id: %@", videoId);
             return YES;
         }
         if (ownerName.length && [[ChannelManager sharedInstance] isChannelBlocked:ownerName]) {
-            NSLog(@"[Gonerino] Blocking video with id %@: Channel %@ is blocked", videoId, ownerName);
+            NSLog(@"[YGonerino] Blocking video with id %@: Channel %@ is blocked", videoId, ownerName);
             return YES;
         }
         if (videoTitle.length && [[WordManager sharedInstance] isWordBlocked:videoTitle]) {
-            NSLog(@"[Gonerino] Blocking video with id %@: title contains blocked word", videoId);
+            NSLog(@"[YGonerino] Blocking video with id %@: title contains blocked word", videoId);
             return YES;
         }
         if (ownerName.length && [[WordManager sharedInstance] isWordBlocked:ownerName]) {
-            NSLog(@"[Gonerino] Blocking video with id %@: channel name contains blocked word", videoId);
+            NSLog(@"[YGonerino] Blocking video with id %@: channel name contains blocked word", videoId);
             return YES;
         }
     }
@@ -432,7 +448,7 @@
         UIGraphicsBeginImageContextWithOptions(size, NO, [UIScreen mainScreen].scale);
         CGContextRef context = UIGraphicsGetCurrentContext();
         if (!context) {
-            NSLog(@"[Gonerino] Failed to create graphics context");
+            NSLog(@"[YGonerino] Failed to create graphics context");
             return nil;
         }
 
@@ -487,7 +503,7 @@
 
         return [icon imageWithRenderingMode:UIImageRenderingModeAlwaysTemplate];
     } @catch (NSException *exception) {
-        NSLog(@"[Gonerino] Exception in createBlockChannelIcon: %@", exception);
+        NSLog(@"[YGonerino] Exception in createBlockChannelIcon: %@", exception);
         return nil;
     }
 }
@@ -497,7 +513,7 @@
         UIGraphicsBeginImageContextWithOptions(size, NO, [UIScreen mainScreen].scale);
         CGContextRef context = UIGraphicsGetCurrentContext();
         if (!context) {
-            NSLog(@"[Gonerino] Failed to create graphics context");
+            NSLog(@"[YGonerino] Failed to create graphics context");
             return nil;
         }
 
@@ -553,7 +569,7 @@
 
         return [icon imageWithRenderingMode:UIImageRenderingModeAlwaysTemplate];
     } @catch (NSException *exception) {
-        NSLog(@"[Gonerino] Exception in createBlockVideoIcon: %@", exception);
+        NSLog(@"[YGonerino] Exception in createBlockVideoIcon: %@", exception);
         return nil;
     }
 }
