@@ -16,8 +16,8 @@
 - (instancetype)init {
     self = [super init];
     if (self) {
-        _blockedWordSet = [[[NSUserDefaults standardUserDefaults] arrayForKey:@"GonerinoBlockedWords"] mutableCopy]
-                              ?: [NSMutableSet set];
+        NSArray *saved = [[NSUserDefaults standardUserDefaults] arrayForKey:@"GonerinoBlockedWords"];
+        _blockedWordSet = saved ? [NSMutableSet setWithArray:saved] : [NSMutableSet set];
     }
     return self;
 }
