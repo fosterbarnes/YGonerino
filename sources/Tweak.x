@@ -72,7 +72,7 @@
 
     NSLog(@"[YGonerino] addAction: called with action title=\"%@\" | sourceView=%@ | node class=%@ | node "
           @"debugDescription=%@",
-          action ? [action valueForKey:@"_title"] : @"(nil)", sourceView, node ? [node class] : @"(nil)",
+          action ? [action valueForKey:@"_title"] : @"(nil)", sourceView, node ? NSStringFromClass([node class]) : @"(nil)",
           node ? [node debugDescription] : @"(nil)");
 
     if (!node || ![node debugDescription] || ![[node debugDescription] containsString:@"YTVideoWithContextNode"]) {
@@ -116,7 +116,7 @@
                         id node            = [sourceView valueForKey:@"asyncdisplaykit_node"];
 
                         NSLog(@"[YGonerino] Block channel: sourceView=%@ | node class=%@", sourceView,
-                              node ? [node class] : @"(nil)");
+                              node ? NSStringFromClass([node class]) : @"(nil)");
 
                         [Util extractVideoInfoFromContextNode:node
                                                     completion:^(NSString *videoId, NSString *videoTitle,
@@ -162,7 +162,7 @@
                         id node            = [sourceView valueForKey:@"asyncdisplaykit_node"];
 
                         NSLog(@"[YGonerino] Block video: sourceView=%@ | node class=%@", sourceView,
-                              node ? [node class] : @"(nil)");
+                              node ? NSStringFromClass([node class]) : @"(nil)");
 
                         [Util extractVideoInfoFromContextNode:node
                                                     completion:^(NSString *videoId, NSString *videoTitle,

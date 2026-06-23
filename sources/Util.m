@@ -246,7 +246,7 @@
                               completion:(void (^)(NSString *videoId, NSString *videoTitle,
                                                    NSString *ownerName))completion {
     NSLog(@"[YGonerino] extractVideoInfoFromContextNode: called with contextNode class=%@",
-          contextNode ? [contextNode class] : @"(nil)");
+          contextNode ? NSStringFromClass([contextNode class]) : @"(nil)");
 
     if (!completion || !contextNode) {
         NSLog(@"[YGonerino] extractVideoInfoFromContextNode: bailing out, completion=%@ contextNode=%@",
@@ -261,7 +261,7 @@
 
     id playbackNode = [self findPlaybackNodeInTree:contextNode];
     NSLog(@"[YGonerino] extractVideoInfoFromContextNode: navigationEndpoint strategy, playbackNode=%@",
-          playbackNode ? [playbackNode class] : @"(not found)");
+          playbackNode ? NSStringFromClass([playbackNode class]) : @"(not found)");
     if (playbackNode) {
         NSDictionary *playbackInfo = [self extractVideoInfoFromPlaybackNodeSync:playbackNode];
         videoId                    = playbackInfo[@"videoId"];
