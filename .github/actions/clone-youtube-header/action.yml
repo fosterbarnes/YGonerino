@@ -1,0 +1,24 @@
+name: 'Clone YouTubeHeader'
+description: 'Clone or update YouTubeHeader repository'
+inputs:
+  theos_path:
+    required: true
+    description: 'Path to Theos installation'
+
+runs:
+  using: "composite"
+  steps:
+    - name: Clone YouTubeHeader
+      shell: bash
+      env:
+        THEOS: ${{ inputs.theos_path }}
+      run: |
+        if [ -d "$THEOS/include/YouTubeHeader" ]; then
+          echo "YouTubeHeader exists. Pulling latest changes..."
+          cd $THEOS/include/YouTubeHeader
+          git pull
+        else
+          echo "YouTubeHeader does not exist. Cloning repository..."
+          cd $THEOS/include
+          git clone --quiet --depth=1 https://github.com/PoomSmart/YouTubeHeader.git
+        fi

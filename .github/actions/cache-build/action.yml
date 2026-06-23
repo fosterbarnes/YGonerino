@@ -1,0 +1,30 @@
+name: 'Cache Build'
+description: 'Cache Gonerino build artifacts'
+inputs:
+  source_commit:
+    required: true
+    description: 'Source commit hash for caching'
+  sdk_version:
+    required: true
+    description: 'iOS SDK Version'
+  youtube_header_commit:
+    required: true
+    description: 'YouTubeHeader commit hash for caching'
+  theos_commit:
+    required: true
+    description: 'Theos commit hash for caching'
+outputs:
+  cache-hit:
+    description: "Whether the cache was hit"
+    value: ${{ steps.cache_build.outputs.cache-hit }}
+runs:
+  using: "composite"
+  steps:
+    - name: Cache build artifacts
+      id: cache_build
+      uses: actions/cache@v4
+      with:
+        path: |
+          packages/
+          .theos/obj/
+        key: gonerino-${{ inputs.source_commit }}-sdk${{ inputs.sdk_version }}-ytheader${{ inputs.youtube_header_commit }}-theos${{ inputs.theos_commit }}

@@ -1,0 +1,30 @@
+name: 'Cache and Setup Theos'
+description: 'Cache Theos installation and setup if cache miss'
+inputs:
+  sdk_version:
+    required: true
+    description: 'iOS SDK Version'
+  theos_commit:
+    required: true
+    description: 'Theos commit hash for caching'
+outputs:
+  cache-hit:
+    description: "Whether the cache was hit"
+    value: ${{ steps.cache_theos.outputs.cache-hit }}
+runs:
+  using: "composite"
+  steps:
+    - name: Cache Theos
+      id: cache_theos
+      uses: actions/cache@v4
+      with:
+        path: theos/
+        key: theos_${{ inputs.theos_commit }}_${{ inputs.sdk_version }}
+    
+    - name: Setup Theos
+      if: steps.cache_theos.outputs.cache-hit != 'true'
+      uses: actions/checkout@v4.1.7
+      with:
+        repository: theos/theos
+        path: theos
+        submodules: recursive

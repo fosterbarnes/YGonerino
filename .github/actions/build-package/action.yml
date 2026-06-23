@@ -1,0 +1,20 @@
+name: 'Build Package'
+description: 'Build Gonerino package'
+inputs:
+  theos_path:
+    required: true
+    description: 'Path to Theos installation'
+  workspace:
+    required: true
+    description: 'GitHub workspace path'
+
+runs:
+  using: "composite"
+  steps:
+    - name: Build packages
+      shell: bash
+      env:
+        THEOS: ${{ inputs.theos_path }}
+      run: |
+        cd ${{ inputs.workspace }}
+        make clean package FINALPACKAGE=1

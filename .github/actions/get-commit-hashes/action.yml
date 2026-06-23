@@ -1,0 +1,29 @@
+name: 'Get Commit Hashes'
+description: 'Get commit hashes for Theos and YouTubeHeader'
+outputs:
+  youtube_header:
+    description: "YouTubeHeader commit hash"
+    value: ${{ steps.get_commits.outputs.youtube_header }}
+  theos:
+    description: "Theos commit hash"
+    value: ${{ steps.get_commits.outputs.theos }}
+
+runs:
+  using: "composite"
+  steps:
+    - name: Get dependency commit hashes
+      id: get_commits
+      shell: bash
+      run: |
+        get_commit_hash() {
+          local repo_url=$1
+          git ls-remote "$repo_url" HEAD | awk '{print substr($1,1,7)}'
+        }
+
+        THEOS_COMMIT=$(get_commit_hash "https://github.com/theos/theos.git")
+        echo "theos=$THEOS_COMMIT" >> $GITHUB_OUTPUT
+        echo "Theos commit: $THEOS_COMMIT"
+
+        YOUTUBE_HEADER_COMMIT=$(get_commit_hash "https://github.com/PoomSmart/YouTubeHeader.git")
+        echo "youtube_header=$YOUTUBE_HEADER_COMMIT" >> $GITHUB_OUTPUT
+        echo "YouTubeHeader commit: $YOUTUBE_HEADER_COMMIT"

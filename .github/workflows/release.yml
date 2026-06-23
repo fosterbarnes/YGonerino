@@ -1,30 +1,90 @@
 name: Release
 
 on:
-   workflow_dispatch:
+  workflow_dispatch:
+    inputs:
+      sdk_version:
+        description: "iOS SDK Version"
+        type: choice
+        options:
+          - 16.5
+          - 17.5
+          - 18.6
+        required: true
+        default: 16.5
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
 
 env:
   GH_TOKEN: ${{ github.token }}
 
 jobs:
   build-tweak-and-release:
-    runs-on: macos-14
+    runs-on: macos-latest
     permissions:
       contents: write
 
     steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
+      - name: Checkout repo
+        uses: actions/checkout@v4.1.1
 
-      - name: Prepare Theos
-        uses: Randomblock1/theos-action@v1
+      - name: Install dependencies
+        run: brew install make ldid
+
+      - name: Set PATH environment variable
+        run: echo "$(brew --prefix make)/libexec/gnubin" >> $GITHUB_PATH
+
+      - name: Get commit hashes
+        id: commit_hashes
+        uses: ./.github/actions/get-commit-hashes
+
+      - name: Cache Theos
+        id: theos
+        uses: ./.github/actions/cache-theos
+        with:
+          sdk_version: ${{ inputs.sdk_version }}
+          theos_commit: ${{ steps.commit_hashes.outputs.theos }}
+
+      - name: Download iOS 16.5 SDK
+        if: inputs.sdk_version == '16.5' && steps.theos.outputs.cache-hit != 'true'
+        uses: ./.github/actions/download-sdk-16.5
+        with:
+          theos_path: ${{ github.workspace }}/theos
+
+      - name: Download iOS 17.5 SDK
+        if: inputs.sdk_version == '17.5' && steps.theos.outputs.cache-hit != 'true'
+        uses: ./.github/actions/download-sdk-17.5
+        with:
+          theos_path: ${{ github.workspace }}/theos
+
+      - name: Download iOS 18.6 SDK
+        if: inputs.sdk_version == '18.6' && steps.theos.outputs.cache-hit != 'true'
+        uses: ./.github/actions/download-sdk-18.6
+        with:
+          theos_path: ${{ github.workspace }}/theos
 
       - name: Clone YouTubeHeader
-        run: |
-          git clone https://github.com/PoomSmart/YouTubeHeader $THEOS/include/YouTubeHeader
+        uses: ./.github/actions/clone-youtube-header
+        with:
+          theos_path: ${{ github.workspace }}/theos
+
+      - name: Cache build
+        id: cache_build
+        uses: ./.github/actions/cache-build
+        with:
+          source_commit: ${{ github.sha }}
+          sdk_version: ${{ inputs.sdk_version }}
+          youtube_header_commit: ${{ steps.commit_hashes.outputs.youtube_header }}
+          theos_commit: ${{ steps.commit_hashes.outputs.theos }}
 
       - name: Build packages
-        run: make package FINALPACKAGE=1
+        if: steps.cache_build.outputs.cache-hit != 'true'
+        uses: ./.github/actions/build-package
+        with:
+          theos_path: ${{ github.workspace }}/theos
+          workspace: ${{ github.workspace }}
 
       - name: Extract Values
         run: |
@@ -38,7 +98,7 @@ jobs:
 
       - name: Create GitHub Release
         id: create_release
-        uses: softprops/action-gh-release@v2
+        uses: softprops/action-gh-release@v2.0.1
         with:
           tag_name: v${{ env.VERSION }}
           files: |
@@ -46,9 +106,7 @@ jobs:
             packages/${{ env.ROOTLESS_DEB_FILE_NAME }}
           generate_release_notes: true
           fail_on_unmatched_files: true
-          token: ${{ env.GITHUB_TOKEN }}
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          token: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Update Repository
         uses: actions/github-script@v7
@@ -72,3 +130,7 @@ jobs:
                 package_name: '${{ env.ROOTLESS_DEB_FILE_NAME }}'
               }
             });
+
+      - name: Output Release URL
+        run: |
+          echo "::notice::Release available at: https://github.com/${{ github.repository }}/releases"
