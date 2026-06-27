@@ -1,5 +1,6 @@
 #import "Settings.h"
 #import "Util.h"
+#import "GonerinoLog.h"
 
 %hook YTAppSettingsPresentationData
 
@@ -44,7 +45,11 @@
                   settingItemId:0];
     [sectionItems addObject:showButtonToggle];
 
-    NSUInteger channelCount               = [[ChannelManager sharedInstance] blockedChannels].count;
+    NSUInteger channelCount = [[ChannelManager sharedInstance] blockedChannels].count;
+    NSUInteger videoCountForSection = [[VideoManager sharedInstance] blockedVideos].count;
+    GonerinoLog(@"[Settings] updateGonerinoSection: channels=%lu videos=%lu",
+                (unsigned long)channelCount, (unsigned long)videoCountForSection);
+
     YTSettingsSectionItem *manageChannels = [%c(YTSettingsSectionItem)
                   itemWithTitle:@"Manage Channels"
                titleDescription:[NSString stringWithFormat:@"%lu blocked channel%@", (unsigned long)channelCount,
@@ -52,6 +57,10 @@
         accessibilityIdentifier:nil
                 detailTextBlock:nil
                     selectBlock:^BOOL(YTSettingsCell *cell, NSUInteger arg1) {
+                        NSArray *channels = [[ChannelManager sharedInstance] blockedChannels];
+                        GonerinoLog(@"[Settings] Manage Channels opened, count=%lu channels=%@",
+                                    (unsigned long)channels.count, channels);
+
                         NSMutableArray *rows = [NSMutableArray array];
 
                         [rows
@@ -86,8 +95,20 @@
                                                                                 alertController.textFields.firstObject
                                                                                     .text;
                                                                             if (channelName.length > 0) {
+                                                                                GonerinoLog(@"[Settings] manual add "
+                                                                                              @"channel: \"%@\"",
+                                                                                              channelName);
                                                                                 [[ChannelManager sharedInstance]
                                                                                     addBlockedChannel:channelName];
+                                                                                GonerinoLog(@"[Settings] manual add "
+                                                                                              @"channel complete, "
+                                                                                              @"manager now has %lu "
+                                                                                              @"channels",
+                                                                                              (unsigned long)
+                                                                                                  [[ChannelManager
+                                                                                                       sharedInstance]
+                                                                                                           blockedChannels]
+                                                                                                      .count);
                                                                                 [self reloadGonerinoSection];
 
                                                                                 UIImpactFeedbackGenerator *generator =
@@ -220,12 +241,20 @@
                 detailTextBlock:nil
                     selectBlock:^BOOL(YTSettingsCell *cell, NSUInteger arg1) {
                         NSArray *blockedVideos = [[VideoManager sharedInstance] blockedVideos];
+                        GonerinoLog(@"[Settings] Manage Videos opened, count=%lu", (unsigned long)blockedVideos.count);
                         if (blockedVideos.count == 0) {
+                            GonerinoLog(@"[Settings] Manage Videos: empty list, showing toast");
                             YTSettingsViewController *settingsVC =
                                 [self valueForKey:@"_settingsViewControllerDelegate"];
                             [[%c(YTToastResponderEvent) eventWithMessage:@"No blocked videos"
                                                                      firstResponder:settingsVC] send];
                             return YES;
+                        }
+
+                        for (NSDictionary *videoInfo in blockedVideos) {
+                            GonerinoLog(@"[Settings] blocked video: id=%@ title=%@ channel=%@",
+                                        videoInfo[@"id"] ?: @"(nil)", videoInfo[@"title"] ?: @"(nil)",
+                                        videoInfo[@"channel"] ?: @"(nil)");
                         }
 
                         NSMutableArray *rows = [NSMutableArray array];
@@ -466,6 +495,7 @@
                        switchOn:[[NSUserDefaults standardUserDefaults] boolForKey:@"GonerinoPeopleWatched"]
                     switchBlock:^BOOL(YTSettingsCell *cell, BOOL enabled) {
                         [[NSUserDefaults standardUserDefaults] setBool:enabled forKey:@"GonerinoPeopleWatched"];
+                        [Util gonerinoInvalidateFilterCache];
                         YTSettingsViewController *settingsVC = [self valueForKey:@"_settingsViewControllerDelegate"];
                         [[%c(YTToastResponderEvent)
                             eventWithMessage:[NSString stringWithFormat:@"'People also watched' %@",
@@ -483,6 +513,7 @@
                        switchOn:[[NSUserDefaults standardUserDefaults] boolForKey:@"GonerinoMightLike"]
                     switchBlock:^BOOL(YTSettingsCell *cell, BOOL enabled) {
                         [[NSUserDefaults standardUserDefaults] setBool:enabled forKey:@"GonerinoMightLike"];
+                        [Util gonerinoInvalidateFilterCache];
                         YTSettingsViewController *settingsVC = [self valueForKey:@"_settingsViewControllerDelegate"];
                         [[%c(YTToastResponderEvent)
                             eventWithMessage:[NSString stringWithFormat:@"'You might also like' %@",
@@ -492,6 +523,26 @@
                     }
                   settingItemId:0];
     [sectionItems addObject:blockMightLike];
+
+    SECTION_HEADER(@"Advanced");
+
+    YTSettingsSectionItem *debugLogging = [%c(YTSettingsSectionItem)
+            switchItemWithTitle:@"Debug Logging"
+               titleDescription:@"Log Gonerino debug output to the console"
+        accessibilityIdentifier:nil
+                       switchOn:[[NSUserDefaults standardUserDefaults] boolForKey:@"GonerinoDebugLogging"]
+                    switchBlock:^BOOL(YTSettingsCell *cell, BOOL enabled) {
+                        [[NSUserDefaults standardUserDefaults] setBool:enabled forKey:@"GonerinoDebugLogging"];
+                        [[NSUserDefaults standardUserDefaults] synchronize];
+                        YTSettingsViewController *settingsVC = [self valueForKey:@"_settingsViewControllerDelegate"];
+                        [[%c(YTToastResponderEvent)
+                            eventWithMessage:[NSString stringWithFormat:@"Debug logging %@",
+                                                                        enabled ? @"enabled" : @"disabled"]
+                              firstResponder:settingsVC] send];
+                        return YES;
+                    }
+                  settingItemId:0];
+    [sectionItems addObject:debugLogging];
 
     SECTION_HEADER(@"Manage Settings");
 
@@ -515,6 +566,8 @@
                             @([[NSUserDefaults standardUserDefaults] boolForKey:@"GonerinoPeopleWatched"]);
                         settings[@"blockMightLike"] =
                             @([[NSUserDefaults standardUserDefaults] boolForKey:@"GonerinoMightLike"]);
+                        settings[@"debugLogging"] =
+                            @([[NSUserDefaults standardUserDefaults] boolForKey:@"GonerinoDebugLogging"]);
 
                         NSURL *tempFileURL =
                             [NSURL fileURLWithPath:[NSTemporaryDirectory()
@@ -617,6 +670,9 @@
 %new
 - (void)reloadGonerinoSection {
     dispatch_async(dispatch_get_main_queue(), ^{
+        GonerinoLog(@"[Settings] section reload, channels=%lu videos=%lu",
+                    (unsigned long)[[ChannelManager sharedInstance] blockedChannels].count,
+                    (unsigned long)[[VideoManager sharedInstance] blockedVideos].count);
         YTSettingsViewController *delegate = [self valueForKey:@"_settingsViewControllerDelegate"];
         if ([delegate isKindOfClass:%c(YTSettingsViewController)]) {
             [self updateGonerinoSectionWithEntry:nil];
@@ -681,12 +737,18 @@
                 [[NSUserDefaults standardUserDefaults] setBool:[mightLike boolValue] forKey:@"GonerinoMightLike"];
             }
 
+            NSNumber *debugLogging = settings[@"debugLogging"];
+            if (debugLogging) {
+                [[NSUserDefaults standardUserDefaults] setBool:[debugLogging boolValue] forKey:@"GonerinoDebugLogging"];
+            }
+
             NSNumber *gonerinoEnabled = settings[@"gonerinoEnabled"];
             if (gonerinoEnabled) {
                 [[NSUserDefaults standardUserDefaults] setBool:[gonerinoEnabled boolValue] forKey:@"GonerinoEnabled"];
             }
 
             [[NSUserDefaults standardUserDefaults] synchronize];
+            [Util gonerinoInvalidateFilterCache];
             [self reloadGonerinoSection];
             [[%c(YTToastResponderEvent) eventWithMessage:@"Settings imported successfully"
                                                      firstResponder:settingsVC] send];
@@ -744,6 +806,7 @@
         settings[@"blockPeopleWatched"] =
             @([[NSUserDefaults standardUserDefaults] boolForKey:@"GonerinoPeopleWatched"]);
         settings[@"blockMightLike"] = @([[NSUserDefaults standardUserDefaults] boolForKey:@"GonerinoMightLike"]);
+        settings[@"debugLogging"]   = @([[NSUserDefaults standardUserDefaults] boolForKey:@"GonerinoDebugLogging"]);
 
         [settings writeToURL:url atomically:YES];
         [[%c(YTToastResponderEvent) eventWithMessage:@"Settings exported successfully"
@@ -772,5 +835,6 @@
 %end
 
 %ctor {
+    GonerinoLog(@"[Settings] %%ctor fired");
     %init;
 }

@@ -1,3 +1,5 @@
 .theos/
 packages/
+*.deb
 .DS_Store
+.buildNotes.txt

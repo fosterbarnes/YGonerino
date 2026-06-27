@@ -1,4 +1,5 @@
 #import "WordManager.h"
+#import "Util.h"
 
 @interface WordManager ()
 @property(nonatomic, strong) NSMutableSet<NSString *> *blockedWordSet;
@@ -52,6 +53,7 @@
 - (void)saveBlockedWords {
     [[NSUserDefaults standardUserDefaults] setObject:[self.blockedWordSet allObjects] forKey:@"GonerinoBlockedWords"];
     [[NSUserDefaults standardUserDefaults] synchronize];
+    [Util gonerinoInvalidateFilterCache];
 }
 
 - (void)setBlockedWords:(NSArray<NSString *> *)words {

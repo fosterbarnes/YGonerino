@@ -1,8 +1,9 @@
 #import "Util.h"
+#import "UtilInternal.h"
 #import "ChannelManager.h"
 #import "VideoManager.h"
+#import "GonerinoLog.h"
 
-// Add forward declarations for missing interfaces
 @interface YTElementsInlineMutedPlaybackView : NSObject
 @property(retain, nonatomic) id asdPlayableEntry;
 @end
@@ -16,7 +17,6 @@
 @property(nonatomic, copy, nullable) NSAttributedString *attributedText;
 @end
 
-// Add category for node methods
 @interface NSObject (NodeMethods)
 - (nullable NSString *)channelName;
 - (nullable NSString *)ownerName;
@@ -26,15 +26,76 @@
 
 @implementation Util
 
+static struct {
+    BOOL valid;
+    BOOL enabled;
+    BOOL hasFilters;
+    BOOL hasChannelOrVideoFilters;
+    BOOL peopleWatched;
+    BOOL mightLike;
+} gGonerinoFilterCache;
+
+static Class GonerinoInlinePlaybackPlayerNodeClass = Nil;
+static Class GonerinoInlineMutedPlaybackViewClass    = Nil;
+static Class GonerinoASTextNodeClass                 = Nil;
+static Class GonerinoELMTextNodeClass                = Nil;
+
+static void GonerinoEnsureNodeClasses(void) {
+    static dispatch_once_t onceToken;
+    dispatch_once(&onceToken, ^{
+        GonerinoInlinePlaybackPlayerNodeClass = NSClassFromString(@"YTInlinePlaybackPlayerNode");
+        GonerinoInlineMutedPlaybackViewClass  = NSClassFromString(@"YTElementsInlineMutedPlaybackView");
+        GonerinoASTextNodeClass               = NSClassFromString(@"ASTextNode");
+        GonerinoELMTextNodeClass              = NSClassFromString(@"ELMTextNode");
+    });
+}
+
++ (void)gonerinoRefreshFilterCache {
+    NSUserDefaults *defaults = [NSUserDefaults standardUserDefaults];
+    BOOL enabled             = [defaults objectForKey:@"GonerinoEnabled"] == nil ? YES : [defaults boolForKey:@"GonerinoEnabled"];
+
+    gGonerinoFilterCache.enabled                    = enabled;
+    gGonerinoFilterCache.peopleWatched              = [defaults boolForKey:@"GonerinoPeopleWatched"];
+    gGonerinoFilterCache.mightLike                  = [defaults boolForKey:@"GonerinoMightLike"];
+
+    BOOL hasChannels = [[ChannelManager sharedInstance] blockedChannels].count > 0;
+    BOOL hasVideos   = [[VideoManager sharedInstance] blockedVideos].count > 0;
+    BOOL hasWords    = [[WordManager sharedInstance] blockedWords].count > 0;
+
+    gGonerinoFilterCache.hasChannelOrVideoFilters = hasChannels || hasVideos;
+    gGonerinoFilterCache.hasFilters               = enabled && (hasChannels || hasVideos || hasWords ||
+                                                    gGonerinoFilterCache.peopleWatched || gGonerinoFilterCache.mightLike);
+    gGonerinoFilterCache.valid                    = YES;
+}
+
++ (void)gonerinoInvalidateFilterCache {
+    gGonerinoFilterCache.valid = NO;
+}
+
++ (id)safeValueForKey:(NSString *)key onObject:(id)object {
+    if (!object || !key.length) {
+        return nil;
+    }
+    if (![object respondsToSelector:NSSelectorFromString(key)]) {
+        return nil;
+    }
+    @try {
+        return [object valueForKey:key];
+    } @catch (NSException *exception) {
+        return nil;
+    }
+}
+
 + (NSDictionary *)extractVideoInfoFromPlaybackNodeSync:(id)node {
-    if (![node isKindOfClass:NSClassFromString(@"YTInlinePlaybackPlayerNode")]) {
+    GonerinoEnsureNodeClasses();
+    if (!GonerinoInlinePlaybackPlayerNodeClass || ![node isKindOfClass:GonerinoInlinePlaybackPlayerNodeClass]) {
         return @{};
     }
 
     @try {
         UIView *view = [node view];
         for (UIView *subview in view.subviews) {
-            if (![subview isKindOfClass:NSClassFromString(@"YTElementsInlineMutedPlaybackView")]) {
+            if (!GonerinoInlineMutedPlaybackViewClass || ![subview isKindOfClass:GonerinoInlineMutedPlaybackViewClass]) {
                 continue;
             }
 
@@ -85,18 +146,18 @@
             }
 
             id endpoint = playableEntry.navigationEndpoint;
-            if ([endpoint respondsToSelector:@selector(valueForKey:)]) {
+            if (endpoint) {
                 for (NSString *key in @[@"videoId", @"video_id"]) {
-                    id value = [endpoint valueForKey:key];
+                    id value = [Util safeValueForKey:key onObject:endpoint];
                     if ([value isKindOfClass:[NSString class]] && [(NSString *)value length] > 0) {
                         info[@"videoId"] = value;
                         break;
                     }
                 }
 
-                id watchEndpoint = [endpoint valueForKey:@"watchEndpoint"];
-                if ([watchEndpoint respondsToSelector:@selector(valueForKey:)]) {
-                    id watchVideoId = [watchEndpoint valueForKey:@"videoId"];
+                id watchEndpoint = [Util safeValueForKey:@"watchEndpoint" onObject:endpoint];
+                if (watchEndpoint) {
+                    id watchVideoId = [Util safeValueForKey:@"videoId" onObject:watchEndpoint];
                     if ([watchVideoId isKindOfClass:[NSString class]] && [(NSString *)watchVideoId length] > 0) {
                         info[@"videoId"] = watchVideoId;
                     }
@@ -133,14 +194,15 @@
             }
         }
     } @catch (NSException *exception) {
-        NSLog(@"[YGonerino] Exception in extractVideoInfoFromPlaybackNodeSync: %@", exception);
+        GonerinoLogError(@"Exception in extractVideoInfoFromPlaybackNodeSync: %@", exception);
     }
 
     return @{};
 }
 
 + (id)findPlaybackNodeInTree:(id)node {
-    if ([node isKindOfClass:NSClassFromString(@"YTInlinePlaybackPlayerNode")]) {
+    GonerinoEnsureNodeClasses();
+    if (GonerinoInlinePlaybackPlayerNodeClass && [node isKindOfClass:GonerinoInlinePlaybackPlayerNodeClass]) {
         return node;
     }
 
@@ -153,67 +215,11 @@
         }
     }
 
-    return nil;
-}
-
-+ (NSString *)textFromNode:(id)node {
-    if (![node respondsToSelector:@selector(attributedText)]) {
-        return nil;
-    }
-
-    NSAttributedString *attributedText = [node attributedText];
-    return attributedText.length ? [attributedText string] : nil;
-}
-
-+ (BOOL)isTextMetadataNode:(id)node {
-    return [node isKindOfClass:NSClassFromString(@"ASTextNode")] ||
-           [node isKindOfClass:NSClassFromString(@"ELMTextNode")];
-}
-
-+ (void)collectTextMetadataFromNode:(id)node
-                        channelName:(NSMutableString *)channelName
-                              title:(NSMutableString *)title {
-    if ([self isTextMetadataNode:node]) {
-        NSString *text = [self textFromNode:node];
-        if (text.length) {
-            if ([text containsString:@" · "]) {
-                NSArray *components = [text componentsSeparatedByString:@" · "];
-                NSString *potential = components.firstObject;
-                if (potential.length && ![potential containsString:@":"] && !channelName.length) {
-                    [channelName setString:potential];
-                }
-            } else if (!title.length && text.length > 3 && ![text containsString:@":"]) {
-                [title setString:text];
-            }
-        }
-    }
-
-    if ([node respondsToSelector:@selector(subnodes)]) {
-        for (id subnode in [node subnodes]) {
-            [self collectTextMetadataFromNode:subnode channelName:channelName title:title];
-        }
-    }
-}
-
-+ (NSString *)findChannelNameInTree:(id)node {
-    if ([node respondsToSelector:@selector(channelName)]) {
-        NSString *channelName = [node channelName];
-        if (channelName.length) {
-            return channelName;
-        }
-    }
-
-    if ([node respondsToSelector:@selector(ownerName)]) {
-        NSString *ownerName = [node ownerName];
-        if (ownerName.length) {
-            return ownerName;
-        }
-    }
-
-    if ([node respondsToSelector:@selector(subnodes)]) {
-        for (id subnode in [node subnodes]) {
-            NSString *found = [self findChannelNameInTree:subnode];
-            if (found.length) {
+    id yogaChildren = [self safeValueForKey:@"yogaChildren" onObject:node];
+    if ([yogaChildren isKindOfClass:[NSArray class]]) {
+        for (id child in yogaChildren) {
+            id found = [self findPlaybackNodeInTree:child];
+            if (found) {
                 return found;
             }
         }
@@ -222,113 +228,14 @@
     return nil;
 }
 
-+ (NSString *)channelNameFromVideoContextNode:(id)contextNode {
-    if (![contextNode isKindOfClass:NSClassFromString(@"YTVideoWithContextNode")]) {
-        return nil;
-    }
-
-    if (![contextNode respondsToSelector:@selector(video)]) {
-        return nil;
-    }
-
-    id video = [contextNode performSelector:@selector(video)];
-    if ([video respondsToSelector:@selector(channelName)]) {
-        NSString *channelName = [video channelName];
-        if (channelName.length) {
-            return channelName;
-        }
-    }
-
-    return nil;
-}
-
-+ (void)extractVideoInfoFromContextNode:(id)contextNode
-                              completion:(void (^)(NSString *videoId, NSString *videoTitle,
-                                                   NSString *ownerName))completion {
-    NSLog(@"[YGonerino] extractVideoInfoFromContextNode: called with contextNode class=%@",
-          contextNode ? NSStringFromClass([contextNode class]) : @"(nil)");
-
-    if (!completion || !contextNode) {
-        NSLog(@"[YGonerino] extractVideoInfoFromContextNode: bailing out, completion=%@ contextNode=%@",
-              completion ? @"present" : @"(nil)", contextNode ? @"present" : @"(nil)");
-        return;
-    }
-
-    NSString *videoId    = nil;
-    NSString *videoTitle = nil;
-    NSString *ownerName  = nil;
-    NSString *strategy   = nil;
-
-    id playbackNode = [self findPlaybackNodeInTree:contextNode];
-    NSLog(@"[YGonerino] extractVideoInfoFromContextNode: navigationEndpoint strategy, playbackNode=%@",
-          playbackNode ? NSStringFromClass([playbackNode class]) : @"(not found)");
-    if (playbackNode) {
-        NSDictionary *playbackInfo = [self extractVideoInfoFromPlaybackNodeSync:playbackNode];
-        videoId                    = playbackInfo[@"videoId"];
-        videoTitle                 = playbackInfo[@"videoTitle"];
-        ownerName                  = playbackInfo[@"ownerName"];
-        NSLog(@"[YGonerino] extractVideoInfoFromContextNode: navigationEndpoint result -> id=%@ title=%@ owner=%@",
-              videoId ?: @"(none)", videoTitle ?: @"(none)", ownerName ?: @"(none)");
-        if (videoId.length || videoTitle.length || ownerName.length) {
-            strategy = @"navigationEndpoint";
-        }
-    }
-
-    if (!ownerName.length || !videoTitle.length) {
-        NSMutableString *channelFromText = [NSMutableString string];
-        NSMutableString *titleFromText   = [NSMutableString string];
-        [self collectTextMetadataFromNode:contextNode channelName:channelFromText title:titleFromText];
-        NSLog(@"[YGonerino] extractVideoInfoFromContextNode: textNode strategy result -> channel=%@ title=%@",
-              channelFromText.length ? channelFromText : @"(none)", titleFromText.length ? titleFromText : @"(none)");
-
-        if (!ownerName.length && channelFromText.length) {
-            ownerName = channelFromText.copy;
-            strategy  = strategy ?: @"textNode";
-        }
-        if (!videoTitle.length && titleFromText.length) {
-            videoTitle = titleFromText.copy;
-            strategy   = strategy ?: @"textNode";
-        }
-    }
-
-    if (!ownerName.length) {
-        NSString *channelFromTree = [self findChannelNameInTree:contextNode];
-        NSLog(@"[YGonerino] extractVideoInfoFromContextNode: channelSelector strategy result -> channel=%@",
-              channelFromTree.length ? channelFromTree : @"(none)");
-        if (channelFromTree.length) {
-            ownerName = channelFromTree;
-            strategy  = strategy ?: @"channelSelector";
-        }
-    }
-
-    if (!ownerName.length) {
-        NSString *channelFromVideo = [self channelNameFromVideoContextNode:contextNode];
-        NSLog(@"[YGonerino] extractVideoInfoFromContextNode: videoContext strategy result -> channel=%@",
-              channelFromVideo.length ? channelFromVideo : @"(none)");
-        if (channelFromVideo.length) {
-            ownerName = channelFromVideo;
-            strategy  = strategy ?: @"videoContext";
-        }
-    }
-
-    if (videoId.length || videoTitle.length || ownerName.length) {
-        NSLog(@"[YGonerino] Extracted video info via %@ (id=%@, title=%@, channel=%@)", strategy ?: @"unknown",
-              videoId ?: @"(none)", videoTitle ?: @"(none)", ownerName ?: @"(none)");
-        completion(videoId, videoTitle, ownerName);
-    } else {
-        NSLog(@"[YGonerino] Failed to extract video info from context node: %@ | full debugDescription: %@",
-              [contextNode class], [contextNode debugDescription]);
-    }
-}
-
 + (void)extractVideoInfoFromNode:(id)node
                       completion:(void (^)(NSString *videoId, NSString *videoTitle, NSString *ownerName))completion {
     if (!completion) {
         return;
     }
 
-    if (![node isKindOfClass:NSClassFromString(@"YTInlinePlaybackPlayerNode")]) {
-        NSLog(@"[YGonerino] Error: extractVideoInfoFromNode received incorrect node type: %@",
+    if (!GonerinoInlinePlaybackPlayerNodeClass || ![node isKindOfClass:GonerinoInlinePlaybackPlayerNodeClass]) {
+        GonerinoLogError(@"extractVideoInfoFromNode received incorrect node type: %@",
               NSStringFromClass([node class]));
         return;
     }
@@ -339,43 +246,75 @@
     }
 }
 
++ (BOOL)gonerinoIsEnabled {
+    if (!gGonerinoFilterCache.valid) {
+        [self gonerinoRefreshFilterCache];
+    }
+    return gGonerinoFilterCache.enabled;
+}
+
++ (BOOL)gonerinoHasActiveBlockFilters {
+    if (!gGonerinoFilterCache.valid) {
+        [self gonerinoRefreshFilterCache];
+    }
+    return gGonerinoFilterCache.hasFilters;
+}
+
++ (BOOL)gonerinoBlockPeopleWatched {
+    if (!gGonerinoFilterCache.valid) {
+        [self gonerinoRefreshFilterCache];
+    }
+    return gGonerinoFilterCache.peopleWatched;
+}
+
++ (BOOL)gonerinoBlockMightLike {
+    if (!gGonerinoFilterCache.valid) {
+        [self gonerinoRefreshFilterCache];
+    }
+    return gGonerinoFilterCache.mightLike;
+}
+
++ (BOOL)gonerinoHasChannelOrVideoBlockFilters {
+    if (!gGonerinoFilterCache.valid) {
+        [self gonerinoRefreshFilterCache];
+    }
+    return gGonerinoFilterCache.hasChannelOrVideoFilters;
+}
+
 + (BOOL)nodeContainsBlockedVideo:(id)node {
-    BOOL isEnabled = [[NSUserDefaults standardUserDefaults] objectForKey:@"GonerinoEnabled"] == nil ? 
-                    YES : [[NSUserDefaults standardUserDefaults] boolForKey:@"GonerinoEnabled"];
-    
-    if (!isEnabled) {
+    if (![self gonerinoIsEnabled]) {
         return NO;
     }
-    
+
     if ([node respondsToSelector:@selector(accessibilityLabel)]) {
         NSString *accessibilityLabel = [node accessibilityLabel];
         if (accessibilityLabel) {
             if ([[WordManager sharedInstance] isWordBlocked:accessibilityLabel]) {
-                NSLog(@"[YGonerino] Blocking video because of blocked word: %@", accessibilityLabel);
+                GonerinoLog(@"Blocking video because of blocked word: %@", accessibilityLabel);
                 return YES;
             }
         }
     }
 
-    if ([node isKindOfClass:NSClassFromString(@"ASTextNode")] || [node isKindOfClass:NSClassFromString(@"ELMTextNode")]) {
-        ASTextNode *textNode = (ASTextNode *)node;
+    GonerinoEnsureNodeClasses();
+    if ((GonerinoASTextNodeClass && [node isKindOfClass:GonerinoASTextNodeClass]) ||
+        (GonerinoELMTextNodeClass && [node isKindOfClass:GonerinoELMTextNodeClass])) {
+        ASTextNode *textNode               = (ASTextNode *)node;
         NSAttributedString *attributedText = textNode.attributedText;
-        NSString *text = [attributedText string];
+        NSString *text                     = [attributedText string];
 
-        if ([[NSUserDefaults standardUserDefaults] boolForKey:@"GonerinoPeopleWatched"] &&
-            [text isEqualToString:@"People also watched this video"]) {
-            NSLog(@"[YGonerino] Blocking 'People also watched' section");
+        if ([self gonerinoBlockPeopleWatched] && [text isEqualToString:@"People also watched this video"]) {
+            GonerinoLog(@"Blocking 'People also watched' section");
             return YES;
         }
 
-        if ([[NSUserDefaults standardUserDefaults] boolForKey:@"GonerinoMightLike"] &&
-            [text isEqualToString:@"You might also like this"]) {
-            NSLog(@"[YGonerino] Blocking 'You might also like' section");
+        if ([self gonerinoBlockMightLike] && [text isEqualToString:@"You might also like this"]) {
+            GonerinoLog(@"Blocking 'You might also like' section");
             return YES;
         }
 
         if ([[WordManager sharedInstance] isWordBlocked:text]) {
-            NSLog(@"[YGonerino] Blocking content with blocked word: %@", text);
+            GonerinoLog(@"Blocking content with blocked word: %@", text);
             return YES;
         }
 
@@ -384,7 +323,7 @@
             if (components.count >= 1) {
                 NSString *potentialChannelName = components[0];
                 if ([[ChannelManager sharedInstance] isChannelBlocked:potentialChannelName]) {
-                    NSLog(@"[YGonerino] Blocking content from blocked channel: %@", potentialChannelName);
+                    GonerinoLog(@"Blocking content from blocked channel: %@", potentialChannelName);
                     return YES;
                 }
             }
@@ -394,7 +333,7 @@
     if ([node respondsToSelector:@selector(channelName)]) {
         NSString *nodeChannelName = [node channelName];
         if ([[ChannelManager sharedInstance] isChannelBlocked:nodeChannelName]) {
-            NSLog(@"[YGonerino] Blocking content from blocked channel: %@", nodeChannelName);
+            GonerinoLog(@"Blocking content from blocked channel: %@", nodeChannelName);
             return YES;
         }
     }
@@ -402,31 +341,31 @@
     if ([node respondsToSelector:@selector(ownerName)]) {
         NSString *nodeOwnerName = [node ownerName];
         if ([[ChannelManager sharedInstance] isChannelBlocked:nodeOwnerName]) {
-            NSLog(@"[YGonerino] Blocking content from blocked channel: %@", nodeOwnerName);
+            GonerinoLog(@"Blocking content from blocked channel: %@", nodeOwnerName);
             return YES;
         }
     }
 
-    if ([node isKindOfClass:NSClassFromString(@"YTInlinePlaybackPlayerNode")]) {
-        NSDictionary *info = [self extractVideoInfoFromPlaybackNodeSync:node];
+    if (GonerinoInlinePlaybackPlayerNodeClass && [node isKindOfClass:GonerinoInlinePlaybackPlayerNodeClass]) {
+        NSDictionary *info   = [self extractVideoInfoFromPlaybackNodeSync:node];
         NSString *videoId    = info[@"videoId"];
         NSString *videoTitle = info[@"videoTitle"];
         NSString *ownerName  = info[@"ownerName"];
 
         if (videoId.length && [[VideoManager sharedInstance] isVideoBlocked:videoId]) {
-            NSLog(@"[YGonerino] Blocking video with id: %@", videoId);
+            GonerinoLog(@"Blocking video with id: %@", videoId);
             return YES;
         }
         if (ownerName.length && [[ChannelManager sharedInstance] isChannelBlocked:ownerName]) {
-            NSLog(@"[YGonerino] Blocking video with id %@: Channel %@ is blocked", videoId, ownerName);
+            GonerinoLog(@"Blocking video with id %@: Channel %@ is blocked", videoId, ownerName);
             return YES;
         }
         if (videoTitle.length && [[WordManager sharedInstance] isWordBlocked:videoTitle]) {
-            NSLog(@"[YGonerino] Blocking video with id %@: title contains blocked word", videoId);
+            GonerinoLog(@"Blocking video with id %@: title contains blocked word", videoId);
             return YES;
         }
         if (ownerName.length && [[WordManager sharedInstance] isWordBlocked:ownerName]) {
-            NSLog(@"[YGonerino] Blocking video with id %@: channel name contains blocked word", videoId);
+            GonerinoLog(@"Blocking video with id %@: channel name contains blocked word", videoId);
             return YES;
         }
     }
@@ -440,6 +379,15 @@
         }
     }
 
+    id yogaChildren = [self safeValueForKey:@"yogaChildren" onObject:node];
+    if ([yogaChildren isKindOfClass:[NSArray class]]) {
+        for (id child in yogaChildren) {
+            if ([self nodeContainsBlockedVideo:child]) {
+                return YES;
+            }
+        }
+    }
+
     return NO;
 }
 
@@ -448,7 +396,7 @@
         UIGraphicsBeginImageContextWithOptions(size, NO, [UIScreen mainScreen].scale);
         CGContextRef context = UIGraphicsGetCurrentContext();
         if (!context) {
-            NSLog(@"[YGonerino] Failed to create graphics context");
+            GonerinoLogError(@"Failed to create graphics context");
             return nil;
         }
 
@@ -503,7 +451,7 @@
 
         return [icon imageWithRenderingMode:UIImageRenderingModeAlwaysTemplate];
     } @catch (NSException *exception) {
-        NSLog(@"[YGonerino] Exception in createBlockChannelIcon: %@", exception);
+        GonerinoLogError(@"Exception in createBlockChannelIcon: %@", exception);
         return nil;
     }
 }
@@ -513,7 +461,7 @@
         UIGraphicsBeginImageContextWithOptions(size, NO, [UIScreen mainScreen].scale);
         CGContextRef context = UIGraphicsGetCurrentContext();
         if (!context) {
-            NSLog(@"[YGonerino] Failed to create graphics context");
+            GonerinoLogError(@"Failed to create graphics context");
             return nil;
         }
 
@@ -569,7 +517,7 @@
 
         return [icon imageWithRenderingMode:UIImageRenderingModeAlwaysTemplate];
     } @catch (NSException *exception) {
-        NSLog(@"[YGonerino] Exception in createBlockVideoIcon: %@", exception);
+        GonerinoLogError(@"Exception in createBlockVideoIcon: %@", exception);
         return nil;
     }
 }

@@ -2,14 +2,17 @@
 
 A YouTube tweak that allows you to block specific channels and automatically remove their videos from your feed.
 
+Forked and modified to work with [YTPlusYTweaks](https://github.com/fosterbarnes/YTPlusYTweaks)
+
+Original repo: [Gonerino](https://github.com/castdrian/Gonerino)
+
 ## Download
 
-- [apt repo](https://repo.adriancastro.dev)
-- [github release](https://github.com/castdrian/Gonerino/releases/latest)
+- [github release](https://github.com/fosterbarnes/YGonerino/releases/latest)
 
 ## Features
 
-- Block channels directly from video context menu
+- Block channels directly from the home feed context menu
 - Block specific videos without blocking the entire channel
 - Block videos via keywords
 - Automatically removes blocked videos from the home and search feeds
@@ -19,12 +22,18 @@ A YouTube tweak that allows you to block specific channels and automatically rem
 
 | Category | Version/Method | Status |
 |----------|---------------|---------|
-| **iOS Version** | 15.8.3+ | ✅ |
+| **iOS Version** | 14.0+ | ✅ |
 | **YouTube Version** | 19.42.1+ | ✅ |
-| **Loading Methods** | ElleKit (palera1n) (Dopamine) (Sideloaded) | ✅ |
-| | TrollFools (TrollStore) | ⚠️ |
-| | CydiaSubstrate | ❓ |
-| | TweakLoader (LiveContainer) | ⚠️ |
+
+### Loading Methods
+
+| Version/Method | Status |
+|----------------|--------|
+| Feather (sideloaded) | ✅ |
+| ElleKit (palera1n) (Dopamine) | ❓ |
+| TrollFools (TrollStore) | ❓ |
+| CydiaSubstrate | ❓ |
+| TweakLoader (LiveContainer) | ❓ |
 
 ### Status Legend
 ✅ - Fully Working\
@@ -34,4 +43,4 @@ A YouTube tweak that allows you to block specific channels and automatically rem
 
 ## Contributors
 
-[![Contributors](https://contrib.rocks/image?repo=castdrian/Gonerino)](https://github.com/castdrian/Gonerino/graphs/contributors)
+[![Contributors](https://contrib.rocks/image?repo=fosterbarnes/YGonerino)](https://github.com/fosterbarnes/YGonerino/graphs/contributors)

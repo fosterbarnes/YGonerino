@@ -11,10 +11,15 @@ NS_ASSUME_NONNULL_BEGIN
 + (void)extractVideoInfoFromNode:(id)node
                       completion:(void (^)(NSString *videoId, NSString *videoTitle, NSString *ownerName))completion;
 
-+ (void)extractVideoInfoFromContextNode:(id)contextNode
-                              completion:(void (^)(NSString *videoId, NSString *videoTitle, NSString *ownerName))completion;
-
 + (BOOL)nodeContainsBlockedVideo:(id)node;
+
++ (BOOL)gonerinoHasActiveBlockFilters;
+
++ (BOOL)gonerinoBlockPeopleWatched;
++ (BOOL)gonerinoBlockMightLike;
++ (BOOL)gonerinoHasChannelOrVideoBlockFilters;
+
++ (void)gonerinoInvalidateFilterCache;
 
 + (UIImage *)createBlockChannelIconWithSize:(CGSize)size;
 + (UIImage *)createBlockVideoIconWithSize:(CGSize)size;

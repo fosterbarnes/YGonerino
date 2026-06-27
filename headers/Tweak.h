@@ -1,4 +1,5 @@
 #import "Util.h"
+#import "Util+HomeFeedMenu.h"
 
 #import "ChannelManager.h"
 #import "VideoManager.h"
@@ -33,6 +34,14 @@ NS_ASSUME_NONNULL_BEGIN
 - (nullable NSIndexPath *)indexPathForCell:(UICollectionViewCell *)cell;
 
 - (void)removeOffendingCells;
+
+- (void)gonerino_cancelPendingRemoval;
+
+- (BOOL)gonerino_isVisibleForRemoval;
+
+- (void)gonerino_removeOffendingCellsNow;
+
+- (void)gonerino_scheduleRemovalDebounced;
 
 @end
 
@@ -78,11 +87,10 @@ NS_ASSUME_NONNULL_BEGIN
 - (void)addAction:(YTActionSheetAction *)action;
 - (void)dismiss;
 - (id)valueForKey:(NSString *)key;
-- (UIImage *)createBlockIconWithOriginalAction:(nullable YTActionSheetAction *)originalAction;
-- (UIViewController *)findViewControllerForView:(UIView *)view;
-- (void)extractChannelNameFromNode:(id)node completion:(void (^)(NSString *channelName))completion;
-- (nullable NSString *)extractVideoTitleFromNode:(id)node;
-- (NSArray<YTActionSheetAction *> *)actions;  // Added this line
+- (NSArray<YTActionSheetAction *> *)actions;
+- (id)gonerino_cachedContextNode;
+- (void)gonerino_logHomeFeedMenuOpenedWithNode:(id)node;
+- (void)gonerino_performBlockAction:(NSInteger)actionType;
 @end
 
 @interface YTActionSheetAction : NSObject
@@ -104,7 +112,6 @@ NS_ASSUME_NONNULL_BEGIN
 - (NSArray<YTActionSheetAction *> *)actions;
 - (void)addAction:(YTActionSheetAction *)action;
 - (void)dismiss;
-- (UIViewController *)findViewControllerForView:(UIView *)view;
 @end
 @interface YTToastResponderEvent : NSObject
 + (instancetype)eventWithMessage:(NSString *)message firstResponder:(UIViewController *)responder;
